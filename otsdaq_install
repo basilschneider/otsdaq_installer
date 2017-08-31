@@ -1,0 +1,386 @@
+#!/usr/bin/env bash
+
+# Install otsdaq
+# If you experience any problems, contact basil.schneider@cern.ch
+
+# Script variables
+err=false
+log="${PWD}"/otsdaq_install.log
+
+# User variables
+build=prof
+products="${PWD}"/products
+pkgs=demo
+srcs=false
+tag=master
+write=false
+
+# Accepted values
+build_acc=(prof debug)
+pkgs_acc=(demo cmsoutertracker)
+tag_acc=(master develop)
+
+# Report usage
+usage(){
+    echo "Help: Install otsdaq and specific packages"
+    echo
+    echo "Usage: ./$(basename $0) [options]"
+    echo "where [options] can be"
+    echo "  -b <build type> Use specific build type (default: ${build})"
+    echo "  -d <dir>        Products directory (default: ${products})"
+    echo "  -p <p1,p2,...>  Comma separated list of packages to be installed"
+    echo "                  (default: ${pkgs})"
+    echo "  -s              Download sources of core packages (default: ${srcs})"
+    echo "  -t <tag>        Check out specific tag of otsdaq (default: ${tag})"
+    echo "  -w              Check out repositories in write mode (default: ${write})"
+    echo "  -h              Show this help"
+}
+
+# Trap function
+ohNo(){
+    echolog
+    echolog "Something went wrong during installation."
+    echolog "Consult the log file for more information:"
+    echolog "${log}"
+    exit 9
+}
+
+# Parse command line arguments
+parseOptions(){
+
+    # Remove old log file
+    rm -f "${log}"
+
+    OPT=$(getopt \
+        --options b:d:p:st:wh \
+        --name "$0" \
+        -- "$@"
+    )
+
+    if [ ${?} -ne 0 ]; then
+        err=true
+    fi
+
+    # Check for errors during options parsing
+    if [ "${err}" = true ]; then
+        usage
+        exit 1
+    fi
+
+    eval set -- "${OPT}"
+
+    while true; do
+        case "${1}" in
+            -b) build="${2}"; shift 2;;
+            -d) products="${2}"; PRODUCTS="${PRODUCTS}":"${2}"; shift 2;;
+            -p) pkgs="${2#otsdaq_}"; shift 2;;
+            -s) srcs=true; shift 1;;
+            -t) tag="${2}"; shift 2;;
+            -w) write=true; shift 1;;
+            -h) usage; exit 0;;
+            --) shift; break;;
+        esac
+    done
+
+    # Turn comma separated list of packages into array
+    IFS=',' read -r -a pkgs <<< "${pkgs}"
+
+    # Check that all values are accepted
+    if ! isInArray "${build}" "${build_acc[@]}"; then
+        echolog "Build type \"${build}\" needs to be a value in (${build_acc[@]})"
+        exit 2
+    fi
+    for pkg in "${pkgs[@]}"; do
+        if ! isInArray "${pkg}" "${pkgs_acc[@]}"; then
+            echolog "Package \"${pkg}\" needs to be a value in (${pkgs_acc[@]})"
+            exit 2
+        fi
+    done
+    #if ! isInArray "${tag}" "${tag_acc[@]}"; then
+    #    echolog "Tag \"${tag}\" needs to be a value in (${tag_acc[@]})"
+    #    exit 2
+    #fi
+
+    # parseOptions() has its own error handling but from here on we want to be
+    # strict when errors appear
+
+    # Immediately exit when someting went wrong: -e
+    # Inherit trap on ERR: -E
+    # If any step in a pipe fails, exit too: -o pipefail
+    set -eE -o pipefail
+
+    # Set trap function
+    trap ohNo ERR
+
+    install
+    createSetupScript
+    setupUserData
+    report
+}
+
+# Check if value is in array
+isInArray(){
+    local value="${1}"
+    shift
+    local element
+    for element; do
+        if [ "${value}" == "${element}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Echo positional arguments and append it to log file
+echolog(){
+    echo "${@}" | tee -a "${log}"
+}
+
+# Install otsdaq
+install(){
+    # Get start time to report duration of installation
+    starttime=$(date)
+
+    # Set otsdaq specific variables
+    Base="${PWD}"
+
+    # Create necessary directories if not already done
+    mkdir -p "${products}"
+    mkdir -p download
+
+    # FIXME: Do we want to source the setup script at this point (copied from
+    # old installation script)?
+    # Source products setup script, if available
+    #if [ -f "${products}"/setup ]; then
+    #    . "${products}"/setup
+    #fi
+
+    ## Check if we are running on Scientific Linux
+    #if command -v lsb_release &>/dev/null; then
+    #    os="$(lsb_release -is)"
+    #    if [ "${os:0:10}" == "Scientific" ]; then
+    #        os=
+    #    fi
+    #fi
+
+    # Download dependencies
+    cd "${Base}"/download/
+    echolog -n "Download dependencies... "
+    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/"${tag}"/raw/ups/product_deps &>> "${log}"
+    demo_version="$(awk '/parent otsdaq_demo/ { print($3) }' product_deps)"
+
+    # If tag is set to master, redownload product_deps to get right version
+    if [ "${tag}" == master ]; then
+        rm product_deps
+        wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/"${demo_version}"/raw/ups/product_deps &>> "${log}"
+        demo_version="$(awk '/parent otsdaq_demo/ { print($3) }' product_deps)"
+    fi
+    echolog "Done."
+
+    # Get current OS
+    echolog -n "Get current OS... "
+    rm -rf cetpkgsupport
+    git clone http://cdcvs.fnal.gov/projects/cetpkgsupport &>> "${log}"
+    os="$(./cetpkgsupport/bin/get-directory-name os)"
+    if [ "${os}" == "u14" ]; then
+        echo "-H Linux64bit+3.19-2.19" > ../products/ups_OVERRIDE.$(hostname)
+    fi
+    echolog "${os}"
+
+    # Get versions
+    echolog -n "Get version of otsdaq... "
+    otsdaq_version="$(awk '/^otsdaq / { print($2) }' product_deps)"
+    echolog "${otsdaq_version}"
+    echolog -n "Get version of utilities... "
+    utilities_version="$(awk '/^otsdaq_utilities/ { print($2) }' product_deps)"
+    echolog "${utilities_version}"
+    echolog -n "Get default qualifier... "
+    defaultqual="$(awk '/^defaultqual/ { print($2) }' product_deps)"
+    echolog "${defaultqual}"
+    echolog -n "Get e qualifier... "
+    equalifier="${defaultqual%%:*}"
+    echolog "${equalifier}"
+    echolog -n "Get s qualifier... "
+    squalifier="${defaultqual##*:}"
+    echolog "${squalifier}"
+
+    # Pull products
+    echolog -n "Get pullProducts... "
+    wget http://scisoft.fnal.gov/scisoft/bundles/tools/pullProducts &>> "${log}"
+    chmod a+x pullProducts
+    echolog "Done."
+    echolog -n "Pull products... "
+    ./pullProducts "${products}" ${os} otsdaq-${otsdaq_version} ${squalifier}-${equalifier} ${build} &>> "${log}"
+    echolog "Done."
+
+    # Set up otsdaq
+    echolog -n "Set up necessary programs for installation... "
+    # The following commands throw errors that we want to ignore
+    source "${products}"/setup || true
+    setup mrb || true
+    setup git || true
+    setup gitflow || true
+    setup nodejs v4_5_0 || true
+    echolog "Done."
+    echolog -n "Set up otsdaq... "
+    export MRB_PROJECT=otsdaq_demo
+    cd "${Base}"
+    mrb newDev -f -v "${demo_version}" -q "${equalifier}":"${squalifier}":"${build}" &>> "${log}"
+    .  "${Base}"/localProducts_otsdaq_demo_"${demo_version}"_"${equalifier}"_"${squalifier}"_"${build}"/setup &>> "${log}" || true
+    cd "${MRB_SOURCE}"
+    echolog "Done."
+
+    # Download sources if requested
+    if [ "${srcs}" == true ]; then
+        echolog -n "Download sources... "
+        if [ "${write}" == true ]; then
+            mrb gitCheckout -d otsdaq_utilities ssh://p-otsdaq@cdcvs.fnal.gov/cvs/projects/otsdaq-utilities &>> "${log}"
+            mrb gitCheckout ssh://p-otsdaq@cdcvs.fnal.gov/cvs/projects/otsdaq &>> "${log}"
+            mrb gitCheckout -d otsdaq_components ssh://p-components@cdcvs.fnal.gov/cvs/projects/components &>> "${log}"
+        else
+            mrb gitCheckout -d otsdaq_utilities http://cdcvs.fnal.gov/projects/otsdaq-utilities &>> "${log}"
+            mrb gitCheckout http://cdcvs.fnal.gov/projects/otsdaq &>> "${log}"
+            mrb gitCheckout -d otsdaq_components http://cdcvs.fnal.gov/projects/components &>> "${log}"
+        fi
+        echolog "Done."
+    fi
+
+    # Download requested packages
+    for pkg in "${pkgs[@]}"; do
+        echolog -n "Download package ${pkg}... "
+        # FIXME: This could be simplified a lot if naming convention could be streamlined
+        if [ "${pkg}" == demo ]; then
+            pkg_branch="${demo_version}"
+            pkg_name=otsdaq_demo
+            if [ "${write}" == true ]; then
+                pkg_remote=ssh://p-otsdaq@cdcvs.fnal.gov/cvs/projects/otsdaq-demo
+            else
+                pkg_remote=http://cdcvs.fnal.gov/projects/otsdaq-demo
+            fi
+        elif [ "${pkg}" == cmsoutertracker ]; then
+            pkg_branch=develop
+            pkg_name=otsdaq_cmsoutertracker
+            if [ "${write}" == true ]; then
+                pkg_remote=ssh://p-otsdaq@cdcvs.fnal.gov/cvs/projects/cmsoutertracker
+            else
+                pkg_remote=http://cdcvs.fnal.gov/projects/cmsoutertracker
+            fi
+        fi
+        # FIXME: I don't know why we need two commands here
+        mrb gitCheckout -d "${pkg_name}" "${pkg_remote}" &>> "${log}"
+        mrb gitCheckout -t "${branch}" -d "${pkg_name}" "${pkg_remote}" &>> "${log}" || true
+        echolog "Done."
+    done
+
+    # Package specific operations
+    for pkg in "${pkgs[@]}"; do
+        # Check if package specific function exists
+        if type "${pkg}" &>/dev/null; then
+            # Evil eval :-/
+            eval "${pkg}"
+        fi
+    done
+
+    cd "${Base}"
+}
+
+# Setup script to be sourced when using otsdaq
+createSetupScript(){
+    echolog -n "Create setup script... "
+    rm -rf setup_ots.sh
+    sed 's/^    //' >> setup_ots.sh << EOF
+    echo # This script is intended to be sourced.
+
+    sh -c "[ \`ps \$\$ | grep bash | wc -l\` -gt 0 ] || { echo 'Please switch to the bash shell before running the otsdaq-demo.'; exit; }" || exit
+
+    echo "Initially your products path was PRODUCTS=\${PRODUCTS}"
+
+    #unalias because the original VM aliased for users
+    unalias kx >/dev/null 2>&1
+    unalias StartOTS.sh >/dev/null 2>&1
+
+    PRODUCTS_SAVE=\${PRODUCTS:+\${PRODUCTS}}${PRODUCTS_SET:+\:${PRODUCTS_SET}}
+    source "${Base}"/products/setup
+    PRODUCTS=\${PRODUCTS:+\${PRODUCTS}}\${PRODUCTS_SAVE:+\:\${PRODUCTS_SAVE}}
+
+    setup mrb
+    setup git
+    source "${Base}/localProducts_otsdaq_demo_${demo_version}_${equalifier}_${squalifier}_${build}/setup"
+    source mrbSetEnv
+    echo "Now your products path is PRODUCTS=\${PRODUCTS}"
+    echo
+
+    # Setup environment when building with MRB (As there's no setupARTDAQOTS file)
+
+    export OTSDAQ_DEMO_LIB=\${MRB_BUILDDIR}/otsdaq_demo/lib
+    #export OTSDAQ_LIB=\${MRB_BUILDDIR}/otsdaq/lib
+    #export OTSDAQ_UTILITIES_LIB=\${MRB_BUILDDIR}/otsdaq_utilities/lib
+    #Done with Setup environment when building with MRB (As there's no setupARTDAQOTS file)
+
+    export CETPKG_INSTALL=${Base}/products
+    export CETPKG_J=4
+
+    export OTS_MAIN_PORT=2015
+
+    export USER_DATA="${MRB_SOURCE}/otsdaq_demo/NoGitData"
+    export ARTDAQ_DATABASE_URI="filesystemdb://${MRB_SOURCE}/otsdaq_demo/NoGitDatabases/filesystemdb/test_db"
+    export OTSDAQ_DATA="${MRB_SOURCE}/otsdaq_demo/NoGitData/OutputData"
+
+    echo "Now your user data path is USER_DATA = \${USER_DATA}"
+    echo "Now your database path is ARTDAQ_DATABASE_URI = \${ARTDAQ_DATABASE_URI}"
+    echo
+
+    alias rawEventDump="art -c ${MRB_SOURCE}/otsdaq/artdaq-ots/ArtModules/fcl/rawEventDump.fcl"
+    alias kx='StartOTS.sh -k'
+
+    echo
+    echo "Now use 'StartOTS.sh --wiz' to configure otsdaq"
+    echo "    Then use 'StartOTS.sh' to start otsdaq"
+    echo "    Or use 'StartOTS.sh --help' for more options"
+    echo
+    echo "    use 'kx' to kill otsdaq processes"
+    echo
+
+EOF
+    echolog "Done."
+}
+
+setupUserData(){
+    echolog -n "Set up user data... "
+    cd "${Base}"
+    export USER_DATA="${MRB_SOURCE}"/otsdaq_demo/NoGitData
+    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/develop/raw/tools/get_tutorial_data.sh -O get_tutorial_data.sh &>> "${log}"
+    chmod 755 get_tutorial_data.sh
+    ./get_tutorial_data.sh &>> "${log}"
+    export ARTDAQ_DATABASE_URI=filesystemdb://"${MRB_SOURCE}"/otsdaq_demo/NoGitDatabases/filesystemdb/test_db
+    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/develop/raw/tools/get_tutorial_database.sh -O get_tutorial_database.sh &>> "${log}"
+    chmod 755 get_tutorial_database.sh
+    ./get_tutorial_database.sh &>> "${log}"
+    echolog "Done."
+
+    cd "${MRB_BUILDDIR}"
+    source mrbSetEnv || true
+    export CETPKG_J=$(nproc)
+    echolog -n "Build packages... "
+    mrb build &>> "${log}"
+    echolog "Done."
+
+    echolog "Installation successful."
+}
+
+report(){
+    echolog "Install start time: ${starttime}"
+    echolog "Install end time:   $(date)"
+}
+
+cmsoutertracker(){
+    echolog -n "Download Ph2_ACF as git submodule... "
+    cd "${Base}"/srcs/otsdaq_cmsoutertracker/otsdaq-cmsoutertracker/Ph2_ACF/
+    git submodule init &>> "${log}"
+    git submodule update &>> "${log}"
+    git fetch &>> "${log}"
+    cd "${Base}"
+    echolog "Done."
+}
+
+parseOptions "$@"
