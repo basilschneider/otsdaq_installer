@@ -319,7 +319,7 @@ createSetupScript(){
     #Done with Setup environment when building with MRB (As there's no setupARTDAQOTS file)
 
     export CETPKG_INSTALL=${Base}/products
-    export CETPKG_J=4
+    export CETPKG_J=$(nproc)
 
     export OTS_MAIN_PORT=2015
 
