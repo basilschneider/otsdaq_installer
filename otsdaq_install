@@ -299,6 +299,7 @@ createSetupScript(){
     unalias kx >/dev/null 2>&1
     unalias StartOTS.sh >/dev/null 2>&1
 
+    # FIXME: Here we need to source the right setup script
     unset PRODUCTS
     PRODUCTS_SAVE=\${PRODUCTS:+\${PRODUCTS}}${PRODUCTS_SET:+\:${PRODUCTS_SET}}
     source "${Base}"/products/setup
