@@ -381,6 +381,7 @@ cmsoutertracker(){
     git submodule init &>> "${log}"
     git submodule update &>> "${log}"
     git fetch &>> "${log}"
+    git co -b Dev origin/Dev &>> "${log}"
     cd "${Base}"
     echolog "Done."
 }
