@@ -148,12 +148,10 @@ install(){
     mkdir -p "${products}"
     mkdir -p download
 
-    # FIXME: Do we want to source the setup script at this point (copied from
-    # old installation script)?
     # Source products setup script, if available
-    #if [ -f "${products}"/setup ]; then
-    #    . "${products}"/setup
-    #fi
+    if [ -f "${products}"/setup ]; then
+        . "${products}"/setup || true
+    fi
 
     ## Check if we are running on Scientific Linux
     #if command -v lsb_release &>/dev/null; then
