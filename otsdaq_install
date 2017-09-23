@@ -218,7 +218,7 @@ install(){
     setup mrb || true
     setup git || true
     setup gitflow || true
-    setup nodejs v4_5_0 || true
+    #setup nodejs v4_5_0 || true
     echolog "Done."
     echolog -n "Set up otsdaq... "
     export MRB_PROJECT=otsdaq_demo
