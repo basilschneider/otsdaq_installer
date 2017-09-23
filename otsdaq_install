@@ -72,7 +72,12 @@ parseOptions(){
     while true; do
         case "${1}" in
             -b) build="${2}"; shift 2;;
-            -d) products="${2}"; PRODUCTS="${PRODUCTS}":"${2}"; shift 2;;
+            -d) if [ "${2:0:1}" == / ]; then
+                    prdcts="${2}"
+                else
+                    prdcts="${PWD}/${2}"
+                fi
+                PRODUCTS="${PRODUCTS}":"${prdcts}"; shift 2;;
             -p) pkgs="${2#otsdaq_}"; shift 2;;
             -s) srcs=true; shift 1;;
             -t) tag="${2}"; shift 2;;
