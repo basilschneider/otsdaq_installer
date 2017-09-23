@@ -9,7 +9,7 @@ log="${PWD}"/otsdaq_install.log
 
 # User variables
 build=prof
-products="${PWD}"/products
+prdcts="${PWD}"/products
 pkgs=demo
 srcs=false
 tag=master
@@ -27,7 +27,7 @@ usage(){
     echo "Usage: ./$(basename $0) [options]"
     echo "where [options] can be"
     echo "  -b <build type> Use specific build type (default: ${build})"
-    echo "  -d <dir>        Products directory (default: ${products})"
+    echo "  -d <dir>        Products directory (default: ${prdcts})"
     echo "  -p <p1,p2,...>  Comma separated list of packages to be installed"
     echo "                  (default: ${pkgs})"
     echo "  -s              Download sources of core packages (default: ${srcs})"
@@ -145,12 +145,12 @@ install(){
     Base="${PWD}"
 
     # Create necessary directories if not already done
-    mkdir -p "${products}"
+    mkdir -p "${prdcts}"
     mkdir -p download
 
     # Source products setup script, if available
-    if [ -f "${products}"/setup ]; then
-        . "${products}"/setup || true
+    if [ -f "${prdcts}"/setup ]; then
+        . "${prdcts}"/setup || true
     fi
 
     ## Check if we are running on Scientific Linux
@@ -181,7 +181,7 @@ install(){
     git clone http://cdcvs.fnal.gov/projects/cetpkgsupport &>> "${log}"
     os="$(./cetpkgsupport/bin/get-directory-name os)"
     if [ "${os}" == "u14" ]; then
-        echo "-H Linux64bit+3.19-2.19" > ../products/ups_OVERRIDE.$(hostname)
+        echo "-H Linux64bit+3.19-2.19" > "${prdcts}"/ups_OVERRIDE.$(hostname)
     fi
     echolog "${os}"
 
@@ -208,13 +208,13 @@ install(){
     chmod a+x pullProducts
     echolog "Done."
     echolog -n "Pull products... "
-    ./pullProducts "${products}" ${os} otsdaq-${otsdaq_version} ${squalifier}-${equalifier} ${build} &>> "${log}"
+    ./pullProducts "${prdcts}" "${os}" otsdaq-${otsdaq_version} ${squalifier}-${equalifier} ${build} &>> "${log}"
     echolog "Done."
 
     # Set up otsdaq
     echolog -n "Set up necessary programs for installation... "
     # The following commands throw errors that we want to ignore
-    source "${products}"/setup || true
+    source "${prdcts}"/setup || true
     setup mrb || true
     setup git || true
     setup gitflow || true
