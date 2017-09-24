@@ -77,7 +77,7 @@ parseOptions(){
                 else
                     prdcts="${PWD}/${2}"
                 fi
-                PRODUCTS="${PRODUCTS}":"${prdcts}"; shift 2;;
+                shift 2;;
             -p) pkgs="${2#otsdaq_}"; shift 2;;
             -s) srcs=true; shift 1;;
             -t) tag="${2}"; shift 2;;
@@ -86,6 +86,11 @@ parseOptions(){
             --) shift; break;;
         esac
     done
+
+    # Set products directory for other scripts
+    # FIXME: Are these both needed?
+    #PRODUCTS="${PRODUCTS}":"${products}":"${prdcts}"
+    #products="${PRODUCTS}":"${products}":"${prdcts}"
 
     # Turn comma separated list of packages into array
     IFS=',' read -r -a pkgs <<< "${pkgs}"
