@@ -12,7 +12,6 @@ build=prof
 prdcts="${PWD}"/products
 pkgs=demo
 srcs=false
-tag=master
 write=false
 
 # Accepted values
@@ -31,7 +30,6 @@ usage(){
     echo "  -p <p1,p2,...>  Comma separated list of packages to be installed"
     echo "                  (default: ${pkgs})"
     echo "  -s              Download sources of core packages (default: ${srcs})"
-    echo "  -t <tag>        Check out specific tag of otsdaq (default: ${tag})"
     echo "  -w              Check out repositories in write mode (default: ${write})"
     echo "  -h              Show this help"
 }
@@ -52,7 +50,7 @@ parseOptions(){
     rm -f "${log}"
 
     OPT=$(getopt \
-        --options b:d:p:st:wh \
+        --options b:d:p:swh \
         --name "$0" \
         -- "$@"
     )
@@ -80,7 +78,6 @@ parseOptions(){
                 shift 2;;
             -p) pkgs="${2#otsdaq_}"; shift 2;;
             -s) srcs=true; shift 1;;
-            -t) tag="${2}"; shift 2;;
             -w) write=true; shift 1;;
             -h) usage; exit 0;;
             --) shift; break;;
@@ -174,15 +171,15 @@ install(){
     # Download dependencies
     cd "${Base}"/download/
     echolog -n "Download dependencies... "
-    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/"${tag}"/raw/ups/product_deps &>> "${log}"
+    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/master/raw/ups/product_deps &>> "${log}"
     demo_version="$(awk '/parent otsdaq_demo/ { print($3) }' product_deps)"
 
-    # If tag is set to master, redownload product_deps to get right version
-    if [ "${tag}" == master ]; then
-        rm product_deps
-        wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/"${demo_version}"/raw/ups/product_deps &>> "${log}"
-        demo_version="$(awk '/parent otsdaq_demo/ { print($3) }' product_deps)"
-    fi
+    ## If tag is set to master, redownload product_deps to get right version
+    #if [ "${tag}" == master ]; then
+    #    rm product_deps
+    #    wget https://cdcvs.fnal.gov/redmine/projects/otsdaq/repository/demo/revisions/"${demo_version}"/raw/ups/product_deps &>> "${log}"
+    #    demo_version="$(awk '/parent otsdaq_demo/ { print($3) }' product_deps)"
+    #fi
     echolog "Done."
 
     # Get current OS
