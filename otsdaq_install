@@ -373,6 +373,8 @@ EOF
 }
 
 setupUserData(){
+    # FIXME: Instead of downloading this generic user data, download something
+    # that makes sense, and something that does not point to otsdaq_demo
     echolog -n "Set up user data... "
     cd "${Base}"
     export USER_DATA="${MRB_SOURCE}"/otsdaq_demo/NoGitData
